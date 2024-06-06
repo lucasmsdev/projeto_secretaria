@@ -1,133 +1,241 @@
-import tkinter as tk
-from tkinter import ttk
-from tkinter import messagebox
-from datetime import datetime
+import sys
+import os
+from PyQt5.QtWidgets import (
+    QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget, 
+    QLineEdit, QFormLayout, QComboBox, QDateTimeEdit, QTextEdit, QSpinBox,
+    QGroupBox, QTableWidget, QTableWidgetItem, QHeaderView, QMessageBox
+)
+from sqlalchemy import create_engine, Column, Integer, String
+from sqlalchemy.orm import declarative_base, sessionmaker
 
-# Função para cadastrar eventuais
-def cadastrar_eventual():
-    nome = entry_nome_eventual.get()
-    cpf = entry_cpf_eventual.get()
-    conta = entry_conta_eventual.get()
-    agencia = entry_agencia_eventual.get()
-    banco = entry_banco_eventual.get()
+DATABASE_URI = 'sqlite:///database.db'
 
-    eventual = Eventual(nome=nome, cpf=cpf, conta=conta, agencia=agencia, banco=banco)
-    session.add(eventual)
-    session.commit()
-    messagebox.showinfo("Cadastro", "Eventual cadastrado com sucesso!")
+# Remove o banco de dados existente (somente para fins de desenvolvimento)
+if os.path.exists("database.db"):
+    os.remove("database.db")
 
-def cadastrar_efetivo():
-    nome = entry_nome_efetivo.get()
-    cpf = entry_cpf_efetivo.get()
-    nif = entry_nif_efetivo.get()
-    especialidade = entry_especialidade_efetivo.get()
+# Criar uma instância do SQLAlchemy Engine
+engine = create_engine(DATABASE_URI)
 
-    efetivo = Efetivo(nome=nome, cpf=cpf, nif=nif, especialidade=especialidade)
-    session.add(efetivo)
-    session.commit()
-    messagebox.showinfo("Cadastro", "Efetivo cadastrado com sucesso!")
+# Criar uma instância do declarative base
+Base = declarative_base()
 
-# Função para cadastrar aulas eventuais
-def cadastrar_aula_eventual():
-    eventual_id = int(entry_eventual_id.get())
-    efetivo_id = int(entry_efetivo_id.get())
-    entrada = datetime.strptime(entry_entrada.get(), '%Y-%m-%d %H:%M:%S')
-    saida = datetime.strptime(entry_saida.get(), '%Y-%m-%d %H:%M:%S')
-    quantidade_aulas = int(entry_quantidade_aulas.get())
-    observacoes = entry_observacoes.get()
+# Definir a classe da tabela Professor
+class Professor(Base):
+    __tablename__ = 'professores'
 
-    aula_eventual = AulaEventual(
-        eventual_id=eventual_id,
-        efetivo_id=efetivo_id,
-        entrada=entrada,
-        saida=saida,
-        quantidade_aulas=quantidade_aulas,
-        observacoes=observacoes
-    )
-    session.add(aula_eventual)
-    session.commit()
-    messagebox.showinfo("Cadastro", "Aula eventual cadastrada com sucesso!")
+    id = Column(Integer, primary_key=True)
+    nome = Column(String)
+    cpf = Column(String)
+    conta = Column(String)
+    agencia = Column(String)
+    banco = Column(String)
+    # Adicione outras colunas conforme necessário
 
-# Criação da janela principal
-root = tk.Tk()
-root.title("Dashboard Eventuais")
+# Criar o esquema
+Base.metadata.create_all(engine)
 
-# Seção de cadastro de eventuais
-frame_eventual = ttk.LabelFrame(root, text="Cadastro de Eventuais")
-frame_eventual.grid(row=0, column=0, padx=10, pady=10)
+# Criar uma sessão
+Session = sessionmaker(bind=engine)
+session = Session()
 
-tk.Label(frame_eventual, text="Nome:").grid(row=0, column=0)
-entry_nome_eventual = tk.Entry(frame_eventual)
-entry_nome_eventual.grid(row=0, column=1)
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Dashboard Eventuais")
+        self.setGeometry(100, 100, 600, 400)
 
-tk.Label(frame_eventual, text="CPF:").grid(row=1, column=0)
-entry_cpf_eventual = tk.Entry(frame_eventual)
-entry_cpf_eventual.grid(row=1, column=1)
+        layout = QVBoxLayout()
 
-tk.Label(frame_eventual, text="Conta:").grid(row=2, column=0)
-entry_conta_eventual = tk.Entry(frame_eventual)
-entry_conta_eventual.grid(row=2, column=1)
+        # Botões de Cadastro
+        self.btnCadastroEventuais = QPushButton("Cadastro de Eventuais")
+        self.btnCadastroEventuais.clicked.connect(self.cadastroEventuais)
+        layout.addWidget(self.btnCadastroEventuais)
 
-tk.Label(frame_eventual, text="Agência:").grid(row=3, column=0)
-entry_agencia_eventual = tk.Entry(frame_eventual)
-entry_agencia_eventual.grid(row=3, column=1)
+        self.btnCadastroEfetivos = QPushButton("Cadastro de Professores Efetivos")
+        self.btnCadastroEfetivos.clicked.connect(self.cadastroEfetivos)
+        layout.addWidget(self.btnCadastroEfetivos)
 
-tk.Label(frame_eventual, text="Banco:").grid(row=4, column=0)
-entry_banco_eventual = tk.Entry(frame_eventual)
-entry_banco_eventual.grid(row=4, column=1)
+        self.btnCadastroAulasEventuais = QPushButton("Cadastro de Aulas Eventuais")
+        self.btnCadastroAulasEventuais.clicked.connect(self.cadastroAulasEventuais)
+        layout.addWidget(self.btnCadastroAulasEventuais)
 
-tk.Button(frame_eventual, text="Cadastrar", command=cadastrar_eventual).grid(row=5, columnspan=2)
+        self.btnListarEventuais = QPushButton("Listar Eventuais")
+        self.btnListarEventuais.clicked.connect(self.listarEventuais)
+        layout.addWidget(self.btnListarEventuais)
 
-# Seção de cadastro de professores efetivos
-frame_efetivo = ttk.LabelFrame(root, text="Cadastro de Professores Efetivos")
-frame_efetivo.grid(row=1, column=0, padx=10, pady=10)
+        # Criando grupo para os botões de geração de gráficos e relatórios
+        groupbox = QGroupBox("Relatórios e Gráficos")
+        groupbox_layout = QVBoxLayout()
 
-tk.Label(frame_efetivo, text="Nome:").grid(row=0, column=0)
-entry_nome_efetivo = tk.Entry(frame_efetivo)
-entry_nome_efetivo.grid(row=0, column=1)
+        self.btnGerarGraficoMensal = QPushButton("Gerar Gráfico Mensal")
+        groupbox_layout.addWidget(self.btnGerarGraficoMensal)
 
-tk.Label(frame_efetivo, text="CPF:").grid(row=1, column=0)
-entry_cpf_efetivo = tk.Entry(frame_efetivo)
-entry_cpf_efetivo.grid(row=1, column=1)
+        self.btnGerarGraficoAnual = QPushButton("Gerar Gráfico Anual")
+        groupbox_layout.addWidget(self.btnGerarGraficoAnual)
 
-tk.Label(frame_efetivo, text="NIF:").grid(row=2, column=0)
-entry_nif_efetivo = tk.Entry(frame_efetivo)
-entry_nif_efetivo.grid(row=2, column=1)
+        self.btnGerarRelatorioDiario = QPushButton("Gerar Relatório Diário")
+        groupbox_layout.addWidget(self.btnGerarRelatorioDiario)
 
-tk.Label(frame_efetivo, text="Especialidade:").grid(row=3, column=0)
-entry_especialidade_efetivo = tk.Entry(frame_efetivo)
-entry_especialidade_efetivo.grid(row=3, column=1)
+        groupbox.setLayout(groupbox_layout)
+        layout.addWidget(groupbox)
 
-tk.Button(frame_efetivo, text="Cadastrar", command=cadastrar_efetivo).grid(row=4, columnspan=2)
+        container = QWidget()
+        container.setLayout(layout)
+        self.setCentralWidget(container)
 
-# Seção de cadastro de aulas eventuais
-frame_aula_eventual = ttk.LabelFrame(root, text="Cadastro de Aulas Eventuais")
-frame_aula_eventual.grid(row=2, column=0, padx=10, pady=10)
+    def cadastroEventuais(self):
+        self.formWindow = CadastroWindow("Cadastro de Eventuais")
+        self.formWindow.show()
 
-tk.Label(frame_aula_eventual, text="ID do Eventual:").grid(row=0, column=0)
-entry_eventual_id = tk.Entry(frame_aula_eventual)
-entry_eventual_id.grid(row=0, column=1)
+    def cadastroEfetivos(self):
+        self.formWindow = CadastroWindow("Cadastro de Professores Efetivos")
+        self.formWindow.show()
 
-tk.Label(frame_aula_eventual, text="ID do Efetivo:").grid(row=1, column=0)
-entry_efetivo_id = tk.Entry(frame_aula_eventual)
-entry_efetivo_id.grid(row=1, column=1)
+    def cadastroAulasEventuais(self):
+        self.formWindow = CadastroAulasEventuaisWindow()
+        self.formWindow.show()
 
-tk.Label(frame_aula_eventual, text="Entrada:").grid(row=2, column=0)
-entry_entrada = tk.Entry(frame_aula_eventual)
-entry_entrada.grid(row=2, column=1)
+    def listarEventuais(self):
+        self.listWindow = ListarEventuaisWindow()
+        self.listWindow.show()
 
-tk.Label(frame_aula_eventual, text="Saída:").grid(row=3, column=0)
-entry_saida = tk.Entry(frame_aula_eventual)
-entry_saida.grid(row=3, column=1)
+class CadastroWindow(QWidget):
+    def __init__(self, title, professor=None):
+        super().__init__()
+        self.setWindowTitle(title)
+        self.layout = QFormLayout()
 
-tk.Label(frame_aula_eventual, text="Quantidade de Aulas:").grid(row=4, column=0)
-entry_quantidade_aulas = tk.Entry(frame_aula_eventual)
-entry_quantidade_aulas.grid(row=4, column=1)
+        self.professor = professor
 
-tk.Label(frame_aula_eventual, text="Observações:").grid(row=5, column=0)
-entry_observacoes = tk.Entry(frame_aula_eventual)
-entry_observacoes.grid(row=5, column=1)
+        self.nome = QLineEdit()
+        self.cpf = QLineEdit()
+        self.conta = QLineEdit()
+        self.agencia = QLineEdit()
+        self.banco = QLineEdit()
 
-tk.Button(frame_aula_eventual, text="Cadastrar", command=cadastrar_aula_eventual).grid(row=6, columnspan=2)
+        if professor:
+            self.nome.setText(professor.nome)
+            self.cpf.setText(professor.cpf)
+            self.conta.setText(professor.conta)
+            self.agencia.setText(professor.agencia)
+            self.banco.setText(professor.banco)
 
-root.mainloop()
+        self.layout.addRow("Nome:", self.nome)
+        self.layout.addRow("CPF:", self.cpf)
+        self.layout.addRow("Conta:", self.conta)
+        self.layout.addRow("Agência:", self.agencia)
+        self.layout.addRow("Banco:", self.banco)
+
+        self.btnSalvar = QPushButton("Salvar")
+        self.btnSalvar.clicked.connect(self.salvar)
+        self.layout.addRow("", self.btnSalvar)
+
+        self.setLayout(self.layout)
+
+    def salvar(self):
+        nome = self.nome.text()
+        cpf = self.cpf.text()
+        conta = self.conta.text()
+        agencia = self.agencia.text()
+        banco = self.banco.text()
+
+        if self.professor:
+            # Atualizar o professor existente
+            self.professor.nome = nome
+            self.professor.cpf = cpf
+            self.professor.conta = conta
+            self.professor.agencia = agencia
+            self.professor.banco = banco
+        else:
+            # Criar um novo professor
+            novo_professor = Professor(nome=nome, cpf=cpf, conta=conta, agencia=agencia, banco=banco)
+            session.add(novo_professor)
+        
+        session.commit()
+        self.close()
+
+class ListarEventuaisWindow(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Listar Professores Eventuais")
+        self.setGeometry(100, 100, 800, 600)
+        self.layout = QVBoxLayout()
+
+        self.table = QTableWidget()
+        self.table.setColumnCount(7)
+        self.table.setHorizontalHeaderLabels(["ID", "Nome", "CPF", "Conta", "Agência", "Banco", "Ações"])
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.layout.addWidget(self.table)
+
+        self.atualizarTabela()
+
+        self.setLayout(self.layout)
+
+    def atualizarTabela(self):
+        professores = session.query(Professor).all()
+        self.table.setRowCount(len(professores))
+
+        for row, professor in enumerate(professores):
+            self.table.setItem(row, 0, QTableWidgetItem(str(professor.id)))
+            self.table.setItem(row, 1, QTableWidgetItem(professor.nome))
+            self.table.setItem(row, 2, QTableWidgetItem(professor.cpf))
+            self.table.setItem(row, 3, QTableWidgetItem(professor.conta))
+            self.table.setItem(row, 4, QTableWidgetItem(professor.agencia))
+            self.table.setItem(row, 5, QTableWidgetItem(professor.banco))
+            
+            btnEditar = QPushButton("Editar")
+            btnEditar.clicked.connect(lambda ch, prof=professor: self.editarProfessor(prof))
+            self.table.setCellWidget(row, 6, btnEditar)
+
+            btnExcluir = QPushButton("Excluir")
+            btnExcluir.clicked.connect(lambda ch, prof=professor: self.excluirProfessor(prof))
+            self.table.setCellWidget(row, 6, btnExcluir)
+    
+    def editarProfessor(self, professor):
+        self.editWindow = CadastroWindow("Editar Professor Eventual", professor)
+        self.editWindow.show()
+
+    def excluirProfessor(self, professor):
+        resposta = QMessageBox.question(self, "Confirmação", f"Tem certeza que deseja excluir o professor {professor.nome}?", QMessageBox.Yes | QMessageBox.No)
+        if resposta == QMessageBox.Yes:
+            session.delete(professor)
+            session.commit()
+            self.atualizarTabela()
+
+class CadastroAulasEventuaisWindow(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Cadastro de Aulas Eventuais")
+        self.layout = QFormLayout()
+
+        self.professor_eventual = QComboBox()
+        self.professor_efetivo = QComboBox()
+        self.horario_entrada = QDateTimeEdit()
+        self.horario_saida = QDateTimeEdit()
+        self.quantidade_aulas = QSpinBox()
+        self.observacoes = QTextEdit()
+
+        # Aqui você pode preencher os comboboxes com dados do banco
+
+        self.layout.addRow("Professor Eventual:", self.professor_eventual)
+        self.layout.addRow("Professor Efetivo:", self.professor_efetivo)
+        self.layout.addRow("Horário de Entrada:", self.horario_entrada)
+        self.layout.addRow("Horário de Saída:", self.horario_saida)
+        self.layout.addRow("Quantidade de Aulas:", self.quantidade_aulas)
+        self.layout.addRow("Observações:", self.observacoes)
+
+        self.setLayout(self.layout)
+
+    def atualizarCombos(self):
+        # Atualizar os comboboxes com dados do banco de dados
+        pass
+
+if __name__ == '__main__':
+    app = QApplication(sys.argv)
+    mainWindow = MainWindow()
+    mainWindow.show()
+    sys.exit(app.exec_())
+    app = QApplication(sys.argv)
+    mainWindow = MainWindow()
+    main
