@@ -20,9 +20,9 @@ engine = create_engine(DATABASE_URI)
 # Criar uma instância do declarative base
 Base = declarative_base()
 
-# Definir a classe da tabela Professor
-class Professor(Base):
-    __tablename__ = 'professores'
+# Definir a classe da tabela Professor Eventual
+class ProfessorEventual(Base):
+    __tablename__ = 'professores_eventuais'
 
     id = Column(Integer, primary_key=True)
     nome = Column(String)
@@ -30,7 +30,17 @@ class Professor(Base):
     conta = Column(String)
     agencia = Column(String)
     banco = Column(String)
-    # Adicione outras colunas conforme necessário
+
+# Definir a classe da tabela Professor Efetivo
+class ProfessorEfetivo(Base):
+    __tablename__ = 'professores_efetivos'
+
+    id = Column(Integer, primary_key=True)
+    nome = Column(String)
+    cpf = Column(String)
+    conta = Column(String)
+    agencia = Column(String)
+    banco = Column(String)
 
 # Criar o esquema
 Base.metadata.create_all(engine)
@@ -42,7 +52,7 @@ session = Session()
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Dashboard Eventuais")
+        self.setWindowTitle("Dashboard Professores")
         self.setGeometry(100, 100, 600, 400)
 
         layout = QVBoxLayout()
@@ -63,6 +73,10 @@ class MainWindow(QMainWindow):
         self.btnListarEventuais = QPushButton("Listar Eventuais")
         self.btnListarEventuais.clicked.connect(self.listarEventuais)
         layout.addWidget(self.btnListarEventuais)
+
+        self.btnListarEfetivos = QPushButton("Listar Efetivos")
+        self.btnListarEfetivos.clicked.connect(self.listarEfetivos)
+        layout.addWidget(self.btnListarEfetivos)
 
         # Criando grupo para os botões de geração de gráficos e relatórios
         groupbox = QGroupBox("Relatórios e Gráficos")
@@ -85,11 +99,11 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(container)
 
     def cadastroEventuais(self):
-        self.formWindow = CadastroWindow("Cadastro de Eventuais")
+        self.formWindow = CadastroWindow("Cadastro de Eventuais", ProfessorEventual)
         self.formWindow.show()
 
     def cadastroEfetivos(self):
-        self.formWindow = CadastroWindow("Cadastro de Professores Efetivos")
+        self.formWindow = CadastroWindow("Cadastro de Professores Efetivos", ProfessorEfetivo)
         self.formWindow.show()
 
     def cadastroAulasEventuais(self):
@@ -97,15 +111,20 @@ class MainWindow(QMainWindow):
         self.formWindow.show()
 
     def listarEventuais(self):
-        self.listWindow = ListarEventuaisWindow()
+        self.listWindow = ListarProfessoresWindow("Listar Professores Eventuais", ProfessorEventual)
+        self.listWindow.show()
+
+    def listarEfetivos(self):
+        self.listWindow = ListarProfessoresWindow("Listar Professores Efetivos", ProfessorEfetivo)
         self.listWindow.show()
 
 class CadastroWindow(QWidget):
-    def __init__(self, title, professor=None):
+    def __init__(self, title, professor_class, professor=None):
         super().__init__()
         self.setWindowTitle(title)
         self.layout = QFormLayout()
 
+        self.professor_class = professor_class
         self.professor = professor
 
         self.nome = QLineEdit()
@@ -149,16 +168,17 @@ class CadastroWindow(QWidget):
             self.professor.banco = banco
         else:
             # Criar um novo professor
-            novo_professor = Professor(nome=nome, cpf=cpf, conta=conta, agencia=agencia, banco=banco)
+            novo_professor = self.professor_class(nome=nome, cpf=cpf, conta=conta, agencia=agencia, banco=banco)
             session.add(novo_professor)
         
         session.commit()
         self.close()
 
-class ListarEventuaisWindow(QWidget):
-    def __init__(self):
+class ListarProfessoresWindow(QWidget):
+    def __init__(self, title, professor_class):
         super().__init__()
-        self.setWindowTitle("Listar Professores Eventuais")
+        self.setWindowTitle(title)
+        self.professor_class = professor_class
         self.setGeometry(100, 100, 800, 600)
         self.layout = QVBoxLayout()
 
@@ -173,7 +193,7 @@ class ListarEventuaisWindow(QWidget):
         self.setLayout(self.layout)
 
     def atualizarTabela(self):
-        professores = session.query(Professor).all()
+        professores = session.query(self.professor_class).all()
         self.table.setRowCount(len(professores))
 
         for row, professor in enumerate(professores):
@@ -193,7 +213,7 @@ class ListarEventuaisWindow(QWidget):
             self.table.setCellWidget(row, 6, btnExcluir)
     
     def editarProfessor(self, professor):
-        self.editWindow = CadastroWindow("Editar Professor Eventual", professor)
+        self.editWindow = CadastroWindow("Editar Professor", self.professor_class, professor)
         self.editWindow.show()
 
     def excluirProfessor(self, professor):
@@ -236,6 +256,3 @@ if __name__ == '__main__':
     mainWindow = MainWindow()
     mainWindow.show()
     sys.exit(app.exec_())
-    app = QApplication(sys.argv)
-    mainWindow = MainWindow()
-    main
