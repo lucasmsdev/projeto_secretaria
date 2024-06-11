@@ -1,18 +1,14 @@
 import sys
-import os
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget, 
     QLineEdit, QFormLayout, QComboBox, QDateTimeEdit, QTextEdit, QSpinBox,
-    QGroupBox, QTableWidget, QTableWidgetItem, QHeaderView, QMessageBox
+    QGroupBox, QTableWidget, QTableWidgetItem, QHBoxLayout, QLabel, QDateEdit
 )
-from sqlalchemy import create_engine, Column, Integer, String
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
 
 DATABASE_URI = 'sqlite:///database.db'
-
-# Remove o banco de dados existente (somente para fins de desenvolvimento)
-if os.path.exists("database.db"):
-    os.remove("database.db")
 
 # Criar uma instância do SQLAlchemy Engine
 engine = create_engine(DATABASE_URI)
@@ -20,7 +16,7 @@ engine = create_engine(DATABASE_URI)
 # Criar uma instância do declarative base
 Base = declarative_base()
 
-# Definir a classe da tabela Professor Eventual
+# Definir a classe da tabela ProfessorEventual
 class ProfessorEventual(Base):
     __tablename__ = 'professores_eventuais'
 
@@ -31,7 +27,7 @@ class ProfessorEventual(Base):
     agencia = Column(String)
     banco = Column(String)
 
-# Definir a classe da tabela Professor Efetivo
+# Definir a classe da tabela ProfessorEfetivo
 class ProfessorEfetivo(Base):
     __tablename__ = 'professores_efetivos'
 
@@ -41,6 +37,20 @@ class ProfessorEfetivo(Base):
     conta = Column(String)
     agencia = Column(String)
     banco = Column(String)
+
+# Definir a classe da tabela AulaEventual
+class AulaEventual(Base):
+    __tablename__ = 'aulas_eventuais'
+
+    id = Column(Integer, primary_key=True)
+    professor_eventual_id = Column(Integer, ForeignKey('professores_eventuais.id')) # Adicionando a chave estrangeira
+    professor_efetivo_id = Column(Integer)
+    data_aula = Column(DateTime)
+    horario_entrada = Column(DateTime)
+    horario_saida = Column(DateTime)
+    quantidade_aulas = Column(Integer)
+    observacoes = Column(String)
+
 
 # Criar o esquema
 Base.metadata.create_all(engine)
@@ -52,7 +62,7 @@ session = Session()
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Dashboard Professores")
+        self.setWindowTitle("Dashboard Eventuais")
         self.setGeometry(100, 100, 600, 400)
 
         layout = QVBoxLayout()
@@ -70,13 +80,18 @@ class MainWindow(QMainWindow):
         self.btnCadastroAulasEventuais.clicked.connect(self.cadastroAulasEventuais)
         layout.addWidget(self.btnCadastroAulasEventuais)
 
-        self.btnListarEventuais = QPushButton("Listar Eventuais")
+        # Botões de Listagem
+        self.btnListarEventuais = QPushButton("Listar Professores Eventuais")
         self.btnListarEventuais.clicked.connect(self.listarEventuais)
         layout.addWidget(self.btnListarEventuais)
 
-        self.btnListarEfetivos = QPushButton("Listar Efetivos")
+        self.btnListarEfetivos = QPushButton("Listar Professores Efetivos")
         self.btnListarEfetivos.clicked.connect(self.listarEfetivos)
         layout.addWidget(self.btnListarEfetivos)
+
+        self.btnListarAulas = QPushButton("Listar Aulas Eventuais")
+        self.btnListarAulas.clicked.connect(self.listarAulas)
+        layout.addWidget(self.btnListarAulas)
 
         # Criando grupo para os botões de geração de gráficos e relatórios
         groupbox = QGroupBox("Relatórios e Gráficos")
@@ -118,27 +133,22 @@ class MainWindow(QMainWindow):
         self.listWindow = ListarProfessoresWindow("Listar Professores Efetivos", ProfessorEfetivo)
         self.listWindow.show()
 
+    def listarAulas(self):
+        self.listWindow = ListarAulasEventuaisWindow()
+        self.listWindow.show()
+
 class CadastroWindow(QWidget):
-    def __init__(self, title, professor_class, professor=None):
+    def __init__(self, title, professor_class):
         super().__init__()
         self.setWindowTitle(title)
-        self.layout = QFormLayout()
-
         self.professor_class = professor_class
-        self.professor = professor
+        self.layout = QFormLayout()
 
         self.nome = QLineEdit()
         self.cpf = QLineEdit()
         self.conta = QLineEdit()
         self.agencia = QLineEdit()
         self.banco = QLineEdit()
-
-        if professor:
-            self.nome.setText(professor.nome)
-            self.cpf.setText(professor.cpf)
-            self.conta.setText(professor.conta)
-            self.agencia.setText(professor.agencia)
-            self.banco.setText(professor.banco)
 
         self.layout.addRow("Nome:", self.nome)
         self.layout.addRow("CPF:", self.cpf)
@@ -158,70 +168,11 @@ class CadastroWindow(QWidget):
         conta = self.conta.text()
         agencia = self.agencia.text()
         banco = self.banco.text()
-
-        if self.professor:
-            # Atualizar o professor existente
-            self.professor.nome = nome
-            self.professor.cpf = cpf
-            self.professor.conta = conta
-            self.professor.agencia = agencia
-            self.professor.banco = banco
-        else:
-            # Criar um novo professor
-            novo_professor = self.professor_class(nome=nome, cpf=cpf, conta=conta, agencia=agencia, banco=banco)
-            session.add(novo_professor)
-        
+        # Salvar no banco de dados
+        novo_professor = self.professor_class(nome=nome, cpf=cpf, conta=conta, agencia=agencia, banco=banco)
+        session.add(novo_professor)
         session.commit()
         self.close()
-
-class ListarProfessoresWindow(QWidget):
-    def __init__(self, title, professor_class):
-        super().__init__()
-        self.setWindowTitle(title)
-        self.professor_class = professor_class
-        self.setGeometry(100, 100, 800, 600)
-        self.layout = QVBoxLayout()
-
-        self.table = QTableWidget()
-        self.table.setColumnCount(7)
-        self.table.setHorizontalHeaderLabels(["ID", "Nome", "CPF", "Conta", "Agência", "Banco", "Ações"])
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        self.layout.addWidget(self.table)
-
-        self.atualizarTabela()
-
-        self.setLayout(self.layout)
-
-    def atualizarTabela(self):
-        professores = session.query(self.professor_class).all()
-        self.table.setRowCount(len(professores))
-
-        for row, professor in enumerate(professores):
-            self.table.setItem(row, 0, QTableWidgetItem(str(professor.id)))
-            self.table.setItem(row, 1, QTableWidgetItem(professor.nome))
-            self.table.setItem(row, 2, QTableWidgetItem(professor.cpf))
-            self.table.setItem(row, 3, QTableWidgetItem(professor.conta))
-            self.table.setItem(row, 4, QTableWidgetItem(professor.agencia))
-            self.table.setItem(row, 5, QTableWidgetItem(professor.banco))
-            
-            btnEditar = QPushButton("Editar")
-            btnEditar.clicked.connect(lambda ch, prof=professor: self.editarProfessor(prof))
-            self.table.setCellWidget(row, 6, btnEditar)
-
-            btnExcluir = QPushButton("Excluir")
-            btnExcluir.clicked.connect(lambda ch, prof=professor: self.excluirProfessor(prof))
-            self.table.setCellWidget(row, 6, btnExcluir)
-    
-    def editarProfessor(self, professor):
-        self.editWindow = CadastroWindow("Editar Professor", self.professor_class, professor)
-        self.editWindow.show()
-
-    def excluirProfessor(self, professor):
-        resposta = QMessageBox.question(self, "Confirmação", f"Tem certeza que deseja excluir o professor {professor.nome}?", QMessageBox.Yes | QMessageBox.No)
-        if resposta == QMessageBox.Yes:
-            session.delete(professor)
-            session.commit()
-            self.atualizarTabela()
 
 class CadastroAulasEventuaisWindow(QWidget):
     def __init__(self):
@@ -231,28 +182,123 @@ class CadastroAulasEventuaisWindow(QWidget):
 
         self.professor_eventual = QComboBox()
         self.professor_efetivo = QComboBox()
-        self.horario_entrada = QDateTimeEdit()
-        self.horario_saida = QDateTimeEdit()
+        self.data_aula = QDateEdit(calendarPopup=True)
+        self.horario_entrada = QDateTimeEdit(calendarPopup=True)
+        self.horario_saida = QDateTimeEdit(calendarPopup=True)
         self.quantidade_aulas = QSpinBox()
         self.observacoes = QTextEdit()
 
-        # Aqui você pode preencher os comboboxes com dados do banco
+        self.atualizarCombos()
 
         self.layout.addRow("Professor Eventual:", self.professor_eventual)
         self.layout.addRow("Professor Efetivo:", self.professor_efetivo)
+        self.layout.addRow("Data da Aula:", self.data_aula)
         self.layout.addRow("Horário de Entrada:", self.horario_entrada)
         self.layout.addRow("Horário de Saída:", self.horario_saida)
         self.layout.addRow("Quantidade de Aulas:", self.quantidade_aulas)
         self.layout.addRow("Observações:", self.observacoes)
 
+        self.btnSalvar = QPushButton("Salvar")
+        self.btnSalvar.clicked.connect(self.salvar)
+        self.layout.addRow("", self.btnSalvar)
+
         self.setLayout(self.layout)
 
     def atualizarCombos(self):
-        # Atualizar os comboboxes com dados do banco de dados
-        pass
+        professores_eventuais = session.query(ProfessorEventual).all()
+        for professor in professores_eventuais:
+            self.professor_eventual.addItem(professor.nome, userData=professor.id)
+        
+        professores_efetivos = session.query(ProfessorEfetivo).all()
+        for professor in professores_efetivos:
+            self.professor_efetivo.addItem(professor.nome, userData=professor.id)
 
-if __name__ == '__main__':
+    def salvar(self):
+        professor_eventual_id = self.professor_eventual.currentData()
+        professor_efetivo_id = self.professor_efetivo.currentData()
+        data_aula = self.data_aula.date().toPyDate()
+        horario_entrada = self.horario_entrada.dateTime().toPyDateTime()
+        horario_saida = self.horario_saida.dateTime().toPyDateTime()
+        quantidade_aulas = self.quantidade_aulas.value()
+        observacoes = self.observacoes.toPlainText()
+
+        nova_aula = AulaEventual(
+            professor_eventual_id=professor_eventual_id,
+            professor_efetivo_id=professor_efetivo_id,
+            data_aula=data_aula,
+            horario_entrada=horario_entrada,
+            horario_saida=horario_saida,
+            quantidade_aulas=quantidade_aulas,
+            observacoes=observacoes,
+ 
+        )
+        session.add(nova_aula)
+        session.commit()
+        self.close()
+
+class ListarProfessoresWindow(QWidget):
+    def __init__(self, title, professor_class):
+        super().__init__()
+        self.setWindowTitle(title)
+        self.professor_class = professor_class
+
+        self.layout = QVBoxLayout()
+        self.table = QTableWidget()
+        self.layout.addWidget(self.table)
+        self.setLayout(self.layout)
+
+        self.atualizarTabela()
+
+    def atualizarTabela(self):
+        professores = session.query(self.professor_class).all()
+        self.table.setRowCount(len(professores))
+        self.table.setColumnCount(6)
+        self.table.setHorizontalHeaderLabels(["ID", "Nome", "CPF", "Conta", "Agência", "Banco"])
+
+        for row, professor in enumerate(professores):
+            self.table.setItem(row, 0, QTableWidgetItem(str(professor.id)))
+            self.table.setItem(row, 1, QTableWidgetItem(professor.nome))
+            self.table.setItem(row, 2, QTableWidgetItem(professor.cpf))
+            self.table.setItem(row, 3, QTableWidgetItem(professor.conta))
+            self.table.setItem(row, 4, QTableWidgetItem(professor.agencia))
+            self.table.setItem(row, 5, QTableWidgetItem(professor.banco))
+
+class ListarAulasEventuaisWindow(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Listar Aulas Eventuais")
+
+        self.layout = QVBoxLayout()
+        self.table = QTableWidget()
+        self.layout.addWidget(self.table)
+        self.setLayout(self.layout)
+
+        self.atualizarTabela()
+
+    def atualizarTabela(self):
+        aulas = session.query(AulaEventual).all()
+        self.table.setRowCount(len(aulas))
+        self.table.setColumnCount(7)
+        self.table.setHorizontalHeaderLabels([
+            "ID", "Professor Eventual", "Professor Efetivo", 
+            "Data da Aula", "Horário de Entrada", "Horário de Saída", 
+            "Quantidade de Aulas", "Observações"
+        ])
+
+        for row, aula in enumerate(aulas):
+            self.table.setItem(row, 0, QTableWidgetItem(str(aula.id)))
+            professor_eventual = session.query(ProfessorEventual).get(aula.professor_eventual_id)
+            self.table.setItem(row, 1, QTableWidgetItem(professor_eventual.nome if professor_eventual else ""))
+            professor_efetivo = session.query(ProfessorEfetivo).get(aula.professor_efetivo_id)
+            self.table.setItem(row, 2, QTableWidgetItem(professor_efetivo.nome if professor_efetivo else ""))
+            self.table.setItem(row, 3, QTableWidgetItem(str(aula.data_aula)))
+            self.table.setItem(row, 4, QTableWidgetItem(str(aula.horario_entrada)))
+            self.table.setItem(row, 5, QTableWidgetItem(str(aula.horario_saida)))
+            self.table.setItem(row, 6, QTableWidgetItem(str(aula.quantidade_aulas)))
+            self.table.setItem(row, 7, QTableWidgetItem(aula.observacoes))
+
+if __name__ == "__main__":
     app = QApplication(sys.argv)
-    mainWindow = MainWindow()
-    mainWindow.show()
+    mainWin = MainWindow()
+    mainWin.show()
     sys.exit(app.exec_())
