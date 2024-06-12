@@ -237,7 +237,7 @@ class CadastroAulasEventuaisWindow(QWidget):
         self.close()
 
 class ListarProfessoresWindow(QWidget):
-    def __init__(self, title, professor_class):
+    def __init__(self, title, professor_class,):
         super().__init__()
         self.setWindowTitle(title)
         self.professor_class = professor_class
