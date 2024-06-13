@@ -1,12 +1,15 @@
 import sys
+import matplotlib.pyplot as plt
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget, 
     QLineEdit, QFormLayout, QComboBox, QDateTimeEdit, QTextEdit, QSpinBox,
-    QGroupBox, QTableWidget, QTableWidgetItem, QHBoxLayout, QLabel, QDateEdit
+    QGroupBox, QTableWidget, QTableWidgetItem, QHBoxLayout, QLabel, QDateEdit,
+    QDialog, QGridLayout
 )
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey, extract
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+from datetime import datetime
 
 DATABASE_URI = 'sqlite:///database.db'
 
@@ -98,12 +101,15 @@ class MainWindow(QMainWindow):
         groupbox_layout = QVBoxLayout()
 
         self.btnGerarGraficoMensal = QPushButton("Gerar Gráfico Mensal")
+        self.btnGerarGraficoMensal.clicked.connect(self.gerarGraficoMensal)
         groupbox_layout.addWidget(self.btnGerarGraficoMensal)
 
         self.btnGerarGraficoAnual = QPushButton("Gerar Gráfico Anual")
+        self.btnGerarGraficoAnual.clicked.connect(self.gerarGraficoAnual)
         groupbox_layout.addWidget(self.btnGerarGraficoAnual)
 
         self.btnGerarRelatorioDiario = QPushButton("Gerar Relatório Diário")
+        self.btnGerarRelatorioDiario.clicked.connect(self.gerarRelatorioDiario)
         groupbox_layout.addWidget(self.btnGerarRelatorioDiario)
 
         groupbox.setLayout(groupbox_layout)
@@ -136,6 +142,18 @@ class MainWindow(QMainWindow):
     def listarAulas(self):
         self.listWindow = ListarAulasEventuaisWindow()
         self.listWindow.show()
+
+    def gerarGraficoMensal(self):
+        self.graficoMensalWindow = GraficoWindow('mensal')
+        self.graficoMensalWindow.show()
+
+    def gerarGraficoAnual(self):
+        self.graficoAnualWindow = GraficoWindow('anual')
+        self.graficoAnualWindow.show()
+
+    def gerarRelatorioDiario(self):
+        self.relatorioDiarioWindow = RelatorioDiarioWindow()
+        self.relatorioDiarioWindow.show()
 
 class CadastroWindow(QWidget):
     def __init__(self, title, professor_class):
@@ -297,8 +315,200 @@ class ListarAulasEventuaisWindow(QWidget):
             self.table.setItem(row, 6, QTableWidgetItem(str(aula.quantidade_aulas)))
             self.table.setItem(row, 7, QTableWidgetItem(aula.observacoes))
 
+class GraficoWindow(QWidget):
+    def __init__(self, tipo):
+        super().__init__()
+        self.setWindowTitle(f"Gerar Gráfico {tipo.capitalize()}")
+        self.tipo = tipo
+        self.layout = QVBoxLayout()
+
+        self.dataInput = QDateEdit(calendarPopup=True)
+        self.layout.addWidget(self.dataInput)
+
+        self.btnGerar = QPushButton(f"Gerar Gráfico {tipo.capitalize()}")
+        self.btnGerar.clicked.connect(self.gerarGrafico)
+        self.layout.addWidget(self.btnGerar)
+
+        self.setLayout(self.layout)
+
+    def gerarGrafico(self):
+        data = self.dataInput.date().toPyDate()
+        if self.tipo == 'mensal':
+            mes = data.month
+            ano = data.year
+            aulas = session.query(AulaEventual).filter(extract('year', AulaEventual.data_aula) == ano,
+                                                       extract('month', AulaEventual.data_aula) == mes).all()
+        elif self.tipo == 'anual':
+            ano = data.year
+            aulas = session.query(AulaEventual).filter(extract('year', AulaEventual.data_aula) == ano).all()
+
+        total_aulas = len(aulas)
+        aulas_eventuais = sum(1 for aula in aulas if aula.professor_eventual_id is not None)
+        aulas_efetivos = total_aulas - aulas_eventuais
+
+        percent_eventuais = (aulas_eventuais / total_aulas) * 100 if total_aulas > 0 else 0
+        percent_efetivos = (aulas_efetivos / total_aulas) * 100 if total_aulas > 0 else 0
+
+        labels = ['Aulas com Eventual', 'Aulas com Efetivo']
+        sizes = [percent_eventuais, percent_efetivos]
+        colors = ['#ff9999','#66b3ff']
+        explode = (0.1, 0)
+
+        plt.figure(figsize=(6, 6))
+        plt.pie(sizes, explode=explode, labels=labels, colors=colors, autopct='%1.1f%%', startangle=140)
+        plt.axis('equal')
+        plt.title(f"Distribuição de Aulas ({self.tipo.capitalize()} {data.strftime('%Y-%m') if self.tipo == 'mensal' else data.strftime('%Y')})")
+        plt.show()
+
+class RelatorioDiarioWindow(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Gerar Relatório Diário")
+        self.layout = QVBoxLayout()
+
+        self.dataInput = QDateEdit(calendarPopup=True)
+        self.layout.addWidget(self.dataInput)
+
+        self.btnGerar = QPushButton("Gerar Relatório Diário")
+        self.btnGerar.clicked.connect(self.gerarRelatorio)
+        self.layout.addWidget(self.btnGerar)
+
+        self.setLayout(self.layout)
+
+    def gerarRelatorio(self):
+        data = self.dataInput.date().toPyDate()
+        aulas = session.query(AulaEventual).filter(extract('year', AulaEventual.data_aula) == data.year,
+                                                   extract('month', AulaEventual.data_aula) == data.month,
+                                                   extract('day', AulaEventual.data_aula) == data.day).all()
+
+        relatorio = QDialog(self)
+        relatorio.setWindowTitle("Relatório Diário")
+        layout = QVBoxLayout()
+
+        table = QTableWidget()
+        table.setRowCount(len(aulas))
+        table.setColumnCount(8)
+        table.setHorizontalHeaderLabels([
+            "ID", "Professor Eventual", "Professor Efetivo", 
+            "Data da Aula", "Horário de Entrada", "Horário de Saída", 
+            "Quantidade de Aulas", "Observações"
+        ])
+
+        for row, aula in enumerate(aulas):
+            table.setItem(row, 0, QTableWidgetItem(str(aula.id)))
+            professor_eventual = session.query(ProfessorEventual).get(aula.professor_eventual_id)
+            table.setItem(row, 1, QTableWidgetItem(professor_eventual.nome if professor_eventual else ""))
+            professor_efetivo = session.query(ProfessorEfetivo).get(aula.professor_efetivo_id)
+            table.setItem(row, 2, QTableWidgetItem(professor_efetivo.nome if professor_efetivo else ""))
+            table.setItem(row, 3, QTableWidgetItem(str(aula.data_aula)))
+            table.setItem(row, 4, QTableWidgetItem(str(aula.horario_entrada)))
+            table.setItem(row, 5, QTableWidgetItem(str(aula.horario_saida)))
+            table.setItem(row, 6, QTableWidgetItem(str(aula.quantidade_aulas)))
+            table.setItem(row, 7, QTableWidgetItem(aula.observacoes))
+
+        layout.addWidget(table)
+        relatorio.setLayout(layout)
+        relatorio.exec_()
+
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     mainWin = MainWindow()
     mainWin.show()
     sys.exit(app.exec_())
+
+### Adicionando a chamada das novas janelas no MainWindow
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Dashboard Eventuais")
+        self.setGeometry(100, 100, 600, 400)
+
+        layout = QVBoxLayout()
+
+        # Botões de Cadastro
+        self.btnCadastroEventuais = QPushButton("Cadastro de Eventuais")
+        self.btnCadastroEventuais.clicked.connect(self.cadastroEventuais)
+        layout.addWidget(self.btnCadastroEventuais)
+
+        self.btnCadastroEfetivos = QPushButton("Cadastro de Professores Efetivos")
+        self.btnCadastroEfetivos.clicked.connect(self.cadastroEfetivos)
+        layout.addWidget(self.btnCadastroEfetivos)
+
+        self.btnCadastroAulasEventuais = QPushButton("Cadastro de Aulas Eventuais")
+        self.btnCadastroAulasEventuais.clicked.connect(self.cadastroAulasEventuais)
+        layout.addWidget(self.btnCadastroAulasEventuais)
+
+        # Botões de Listagem
+        self.btnListarEventuais = QPushButton("Listar Professores Eventuais")
+        self.btnListarEventuais.clicked.connect(self.listarEventuais)
+        layout.addWidget(self.btnListarEventuais)
+
+        self.btnListarEfetivos = QPushButton("Listar Professores Efetivos")
+        self.btnListarEfetivos.clicked.connect(self.listarEfetivos)
+        layout.addWidget(self.btnListarEfetivos)
+
+        self.btnListarAulas = QPushButton("Listar Aulas Eventuais")
+        self.btnListarAulas.clicked.connect(self.listarAulas)
+        layout.addWidget(self.btnListarAulas)
+
+        # Criando grupo para os botões de geração de gráficos e relatórios
+        groupbox = QGroupBox("Relatórios e Gráficos")
+        groupbox_layout = QVBoxLayout()
+
+        self.btnGerarGraficoMensal = QPushButton("Gerar Gráfico Mensal")
+        self.btnGerarGraficoMensal.clicked.connect(lambda: self.abrirGrafico('mensal'))
+        groupbox_layout.addWidget(self.btnGerarGraficoMensal)
+
+        self.btnGerarGraficoAnual = QPushButton("Gerar Gráfico Anual")
+        self.btnGerarGraficoAnual.clicked.connect(lambda: self.abrirGrafico('anual'))
+        groupbox_layout.addWidget(self.btnGerarGraficoAnual)
+
+        self.btnGerarRelatorioDiario = QPushButton("Gerar Relatório Diário")
+        self.btnGerarRelatorioDiario.clicked.connect(self.abrirRelatorioDiario)
+        groupbox_layout.addWidget(self.btnGerarRelatorioDiario)
+
+        groupbox.setLayout(groupbox_layout)
+        layout.addWidget(groupbox)
+
+        container = QWidget()
+        container.setLayout(layout)
+        self.setCentralWidget(container)
+
+    def cadastroEventuais(self):
+        self.formWindow = CadastroWindow("Cadastro de Eventuais", ProfessorEventual)
+        self.formWindow.show()
+
+    def cadastroEfetivos(self):
+        self.formWindow = CadastroWindow("Cadastro de Professores Efetivos", ProfessorEfetivo)
+        self.formWindow.show()
+
+    def cadastroAulasEventuais(self):
+        self.formWindow = CadastroAulasEventuaisWindow()
+        self.formWindow.show()
+
+    def listarEventuais(self):
+        self.listWindow = ListarProfessoresWindow("Listar Professores Eventuais", ProfessorEventual)
+        self.listWindow.show()
+
+    def listarEfetivos(self):
+        self.listWindow = ListarProfessoresWindow("Listar Professores Efetivos", ProfessorEfetivo)
+        self.listWindow.show()
+
+    def listarAulas(self):
+        self.listWindow = ListarAulasEventuaisWindow()
+        self.listWindow.show()
+
+    def abrirGrafico(self, tipo):
+        self.graficoWindow = GraficoWindow(tipo)
+        self.graficoWindow.show()
+
+    def abrirRelatorioDiario(self):
+        self.relatorioDiarioWindow = RelatorioDiarioWindow()
+        self.relatorioDiarioWindow.show()
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    mainWin = MainWindow()
+    mainWin.show()
+    sys.exit(app.exec_())
+
